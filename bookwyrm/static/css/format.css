@@ -1,15 +1,68 @@
 html {
+    background-color:#CCCCCC;
     scroll-behavior: smooth;
     scroll-padding-top: 20%;
+}
+
+a {
+    color:#258a25;
 }
 
 /* --- --- */
 .image {
     overflow: hidden;
 }
+.navbar-menu {
+    background-color:#CCCCCC;
+}
 .navbar .logo {
     max-height: 50px;
 }
+
+.navbar-brand{
+    background-color:#CCCCCC;
+}
+
+.navbar-item{
+    background-color:#CCCCCC;
+}
+
+.navbar-link{
+    background-color:#CCCCCC;
+}
+
+.pulldown-menu{
+    background-color:#CCCCCC;
+}
+
+.navbar-divider{
+    background-color:#CCCCCC;
+}
+
+.navbar-dropdown{
+    background-color:#CCCCCC;
+}
+
+.column{
+    background-color:#CCCCCC;
+}
+
+.ml-2 {
+    background-color:#CCCCCC
+}
+
+.content {
+    background-color:#CCCCCC;    
+}
+
+.card-content {
+    background-color:#CCCCCC;
+}
+
+.card-footer-item {
+    background-color:#CCCCCC;
+}
+    
 
 .card {
     overflow: visible;
@@ -17,6 +70,19 @@ html {
 .card-header-title {
     overflow: hidden;
 }
+
+.card-header-title.has-text-white {
+        background-color:#258a25;
+    }
+
+.navbar-divider {
+    background-color:#CCCCCC;
+}
+
+.has-background-primary {
+    background-color:#258a25;
+}
+
 
 /* --- SHELVING --- */
 .shelf-option:disabled > *::after {
@@ -27,7 +93,7 @@ html {
 
 /* --- TOGGLES --- */
 .toggle-button[aria-pressed=true], .toggle-button[aria-pressed=true]:hover {
-    background-color: hsl(171, 100%, 41%);
+    background-color: hsl(120, 73%, 54%);
     color: white;
 }
 .hide-active[aria-pressed=true], .hide-inactive[aria-pressed=false] {
