@@ -1,5 +1,5 @@
 celery==4.4.2
-Django==3.0.7
+Django==3.1.6
 django-model-utils==4.0.0
 environs==7.2.0
 flower==0.9.4
@@ -12,6 +12,7 @@ redis==3.4.1
 requests==2.22.0
 responses==0.10.14
 django-rename-app==0.1.2
+pytz>=2021.1
 
 # Dev
 black==20.8b1

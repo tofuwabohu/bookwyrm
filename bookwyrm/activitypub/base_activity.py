@@ -75,7 +75,7 @@ class ActivityObject:
         for field in fields(self):
             try:
                 value = kwargs[field.name]
-                if value in (None, MISSING):
+                if value in (None, MISSING, {}):
                     raise KeyError()
                 try:
                     is_subclass = issubclass(field.type, ActivityObject)
@@ -248,12 +248,14 @@ def get_model_from_type(activity_type):
     return model[0]
 
 
-def resolve_remote_id(remote_id, model=None, refresh=False, save=True):
+def resolve_remote_id(
+    remote_id, model=None, refresh=False, save=True, get_activity=False
+):
     """ take a remote_id and return an instance, creating if necessary """
     if model:  # a bonus check we can do if we already know the model
         result = model.find_existing_by_remote_id(remote_id)
         if result and not refresh:
-            return result
+            return result if not get_activity else result.to_activity_dataclass()
 
     # load the data and create the object
     try:
@@ -263,14 +265,18 @@ def resolve_remote_id(remote_id, model=None, refresh=False, save=True):
             "Could not connect to host for remote_id in: %s" % (remote_id)
         )
     # determine the model implicitly, if not provided
-    if not model:
+    # or if it's a model with subclasses like Status, check again
+    if not model or hasattr(model.objects, "select_subclasses"):
         model = get_model_from_type(data.get("type"))
 
     # check for existing items with shared unique identifiers
     result = model.find_existing(data)
     if result and not refresh:
-        return result
+        return result if not get_activity else result.to_activity_dataclass()
 
     item = model.activity_serializer(**data)
+    if get_activity:
+        return item
+
     # if we're refreshing, "result" will be set and we'll update it
     return item.to_model(model=model, instance=result, save=save)

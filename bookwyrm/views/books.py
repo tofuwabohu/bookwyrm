@@ -1,6 +1,9 @@
 """ the good stuff! the books! """
+from uuid import uuid4
+
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.postgres.search import SearchRank, SearchVector
+from django.core.files.base import ContentFile
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Avg, Q
@@ -14,9 +17,9 @@ from django.views.decorators.http import require_POST
 from bookwyrm import forms, models
 from bookwyrm.activitypub import ActivitypubResponse
 from bookwyrm.connectors import connector_manager
+from bookwyrm.connectors.abstract_connector import get_image
 from bookwyrm.settings import PAGE_LENGTH
-from .helpers import is_api_request, get_activity_feed, get_edition
-from .helpers import privacy_filter
+from .helpers import is_api_request, get_edition, privacy_filter
 
 
 # pylint: disable= no-self-use
@@ -49,7 +52,7 @@ class Book(View):
 
         # all reviews for the book
         reviews = models.Review.objects.filter(book__in=work.editions.all())
-        reviews = get_activity_feed(request.user, queryset=reviews)
+        reviews = privacy_filter(request.user, reviews)
 
         # the reviews to show
         paginated = Paginator(
@@ -97,7 +100,7 @@ class Book(View):
             "readthroughs": readthroughs,
             "path": "/book/%s" % book_id,
         }
-        return TemplateResponse(request, "book.html", data)
+        return TemplateResponse(request, "book/book.html", data)
 
 
 @method_decorator(login_required, name="dispatch")
@@ -115,7 +118,7 @@ class EditBook(View):
             if not book.description:
                 book.description = book.parent_work.description
         data = {"book": book, "form": forms.EditionForm(instance=book)}
-        return TemplateResponse(request, "edit_book.html", data)
+        return TemplateResponse(request, "book/edit_book.html", data)
 
     def post(self, request, book_id=None):
         """ edit a book cool """
@@ -125,7 +128,7 @@ class EditBook(View):
 
         data = {"book": book, "form": form}
         if not form.is_valid():
-            return TemplateResponse(request, "edit_book.html", data)
+            return TemplateResponse(request, "book/edit_book.html", data)
 
         add_author = request.POST.get("add_author")
         # we're adding an author through a free text field
@@ -169,13 +172,19 @@ class EditBook(View):
             data["confirm_mode"] = True
             # this isn't preserved because it isn't part of the form obj
             data["remove_authors"] = request.POST.getlist("remove_authors")
-            return TemplateResponse(request, "edit_book.html", data)
+            return TemplateResponse(request, "book/edit_book.html", data)
 
         remove_authors = request.POST.getlist("remove_authors")
         for author_id in remove_authors:
             book.authors.remove(author_id)
 
-        book = form.save()
+        book = form.save(commit=False)
+        url = request.POST.get("cover-url")
+        if url:
+            image = set_cover_from_url(url)
+            if image:
+                book.cover.save(*image, save=False)
+        book.save()
         return redirect("/book/%s" % book.id)
 
 
@@ -194,7 +203,7 @@ class ConfirmEditBook(View):
 
         data = {"book": book, "form": form}
         if not form.is_valid():
-            return TemplateResponse(request, "edit_book.html", data)
+            return TemplateResponse(request, "book/edit_book.html", data)
 
         with transaction.atomic():
             # save book
@@ -241,14 +250,33 @@ class Editions(View):
         """ list of editions of a book """
         work = get_object_or_404(models.Work, id=book_id)
 
+        try:
+            page = int(request.GET.get("page", 1))
+        except ValueError:
+            page = 1
+
         if is_api_request(request):
             return ActivitypubResponse(work.to_edition_list(**request.GET))
+        filters = {}
 
+        if request.GET.get("language"):
+            filters["languages__contains"] = [request.GET.get("language")]
+        if request.GET.get("format"):
+            filters["physical_format__iexact"] = request.GET.get("format")
+
+        editions = work.editions.order_by("-edition_rank").all()
+        languages = set(sum([e.languages for e in editions], []))
+
+        paginated = Paginator(editions.filter(**filters).all(), PAGE_LENGTH)
         data = {
-            "editions": work.editions.order_by("-edition_rank").all(),
+            "editions": paginated.page(page),
             "work": work,
+            "languages": languages,
+            "formats": set(
+                e.physical_format.lower() for e in editions if e.physical_format
+            ),
         }
-        return TemplateResponse(request, "editions.html", data)
+        return TemplateResponse(request, "book/editions.html", data)
 
 
 @login_required
@@ -256,16 +284,34 @@ class Editions(View):
 def upload_cover(request, book_id):
     """ upload a new cover """
     book = get_object_or_404(models.Edition, id=book_id)
+    book.last_edited_by = request.user
+
+    url = request.POST.get("cover-url")
+    if url:
+        image = set_cover_from_url(url)
+        if image:
+            book.cover.save(*image)
+
+        return redirect("{:s}?cover_error=True".format(book.local_path))
 
     form = forms.CoverForm(request.POST, request.FILES, instance=book)
-    if not form.is_valid():
-        return redirect("/book/%d" % book.id)
+    if not form.is_valid() or not form.files.get("cover"):
+        return redirect(book.local_path)
 
-    book.last_edited_by = request.user
     book.cover = form.files["cover"]
     book.save()
 
-    return redirect("/book/%s" % book.id)
+    return redirect(book.local_path)
+
+
+def set_cover_from_url(url):
+    """ load it from a url """
+    image_file = get_image(url)
+    if not image_file:
+        return None
+    image_name = str(uuid4()) + "." + url.split(".")[-1]
+    image_content = ContentFile(image_file.content)
+    return [image_name, image_content]
 
 
 @login_required
