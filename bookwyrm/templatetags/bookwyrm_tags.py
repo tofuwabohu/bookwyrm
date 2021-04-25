@@ -1,11 +1,8 @@
 """ template filters """
 from uuid import uuid4
-from datetime import datetime
 
-from dateutil.relativedelta import relativedelta
-from django import template
+from django import template, utils
 from django.db.models import Avg
-from django.utils import timezone
 
 from bookwyrm import models, views
 from bookwyrm.views.status import to_markdown
@@ -62,14 +59,10 @@ def get_notification_count(user):
 def get_replies(status):
     """ get all direct replies to a status """
     # TODO: this limit could cause problems
-    return (
-        models.Status.objects.filter(
-            reply_parent=status,
-            deleted=False,
-        )
-        .select_subclasses()
-        .all()[:10]
-    )
+    return models.Status.objects.filter(
+        reply_parent=status,
+        deleted=False,
+    ).select_subclasses()[:10]
 
 
 @register.filter(name="parent")
@@ -133,28 +126,6 @@ def get_uuid(identifier):
     return "%s%s" % (identifier, uuid4())
 
 
-@register.filter(name="post_date")
-def time_since(date):
-    """ concise time ago function """
-    if not isinstance(date, datetime):
-        return ""
-    now = timezone.now()
-
-    if date < (now - relativedelta(weeks=1)):
-        formatter = "%b %-d"
-        if date.year != now.year:
-            formatter += " %Y"
-        return date.strftime(formatter)
-    delta = relativedelta(now, date)
-    if delta.days:
-        return "%dd" % delta.days
-    if delta.hours:
-        return "%dh" % delta.hours
-    if delta.minutes:
-        return "%dm" % delta.minutes
-    return "%ds" % delta.seconds
-
-
 @register.filter(name="to_markdown")
 def get_markdown(content):
     """ convert markdown to html """
@@ -195,6 +166,17 @@ def get_next_shelf(current_shelf):
     if current_shelf == "read":
         return "read"
     return "to-read"
+
+
+@register.filter(name="title")
+def get_title(book):
+    """ display the subtitle if the title is short """
+    if not book:
+        return ""
+    title = book.title
+    if len(title) < 6 and book.subtitle:
+        title = "{:s}: {:s}".format(title, book.subtitle)
+    return title
 
 
 @register.simple_tag(takes_context=False)
@@ -246,3 +228,10 @@ def active_read_through(book, user):
 def comparison_bool(str1, str2):
     """ idk why I need to write a tag for this, it reutrns a bool """
     return str1 == str2
+
+
+@register.simple_tag(takes_context=False)
+def get_lang():
+    """ get current language, strip to the first two letters """
+    language = utils.translation.get_language()
+    return language[0 : language.find("-")]

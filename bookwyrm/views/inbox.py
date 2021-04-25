@@ -70,13 +70,22 @@ def is_blocked_user_agent(request):
     user_agent = request.headers.get("User-Agent")
     if not user_agent:
         return False
-    url = re.search(r"https?://{:s}/?".format(regex.domain), user_agent).group()
+    url = re.search(r"https?://{:s}/?".format(regex.domain), user_agent)
+    if not url:
+        return False
+    url = url.group()
     return models.FederatedServer.is_blocked(url)
 
 
 def is_blocked_activity(activity_json):
     """ get the sender out of activity json and check if it's blocked """
     actor = activity_json.get("actor")
+
+    # check if the user is banned/deleted
+    existing = models.User.find_existing_by_remote_id(actor)
+    if existing and existing.deleted:
+        return True
+
     if not actor:
         # well I guess it's not even a valid activity so who knows
         return False
